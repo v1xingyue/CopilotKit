@@ -228,19 +228,19 @@ export interface CopilotRuntimeConstructorParams<T extends Parameter[] | [] = []
    * Requires providing the `createMCPClient` function during instantiation.
    * @experimental
    */
-  mcpEndpoints?: MCPEndpointConfig[];
+  mcpServers?: MCPEndpointConfig[];
 
   /**
    * A function that creates an MCP client instance for a given endpoint configuration.
    * This function is responsible for using the appropriate MCP client library
    * (e.g., `@copilotkit/runtime`, `ai`) to establish a connection.
-   * Required if `mcpEndpoints` is provided.
+   * Required if `mcpServers` is provided.
    *
    * ```typescript
    * import { experimental_createMCPClient } from "ai"; // Import from vercel ai library
    * // ...
    * const runtime = new CopilotRuntime({
-   *   mcpEndpoints: [{ endpoint: "..." }],
+   *   mcpServers: [{ endpoint: "..." }],
    *   async createMCPClient(config) {
    *     return await experimental_createMCPClient({
    *       transport: {
@@ -270,7 +270,7 @@ export class CopilotRuntime<const T extends Parameter[] | [] = []> {
   private availableAgents: Pick<AgentWithEndpoint, "name" | "id">[];
 
   // +++ MCP Properties +++
-  private readonly mcpEndpointsConfig?: MCPEndpointConfig[];
+  private readonly mcpServersConfig?: MCPEndpointConfig[];
   private mcpActionCache = new Map<string, Action<any>[]>();
   // --- MCP Properties ---
 
@@ -303,18 +303,14 @@ export class CopilotRuntime<const T extends Parameter[] | [] = []> {
     this.observability = params?.observability_c;
     this.agents = params?.agents ?? {};
     // +++ MCP Initialization +++
-    this.mcpEndpointsConfig = params?.mcpEndpoints;
+    this.mcpServersConfig = params?.mcpServers;
     this.createMCPClientImpl = params?.createMCPClient;
 
-    // Validate: If mcpEndpoints are provided, createMCPClient must also be provided
-    if (
-      this.mcpEndpointsConfig &&
-      this.mcpEndpointsConfig.length > 0 &&
-      !this.createMCPClientImpl
-    ) {
+    // Validate: If mcpServers are provided, createMCPClient must also be provided
+    if (this.mcpServersConfig && this.mcpServersConfig.length > 0 && !this.createMCPClientImpl) {
       throw new CopilotKitMisuseError({
         message:
-          "MCP Integration Error: `mcpEndpoints` were provided, but the `createMCPClient` function was not passed to the CopilotRuntime constructor. " +
+          "MCP Integration Error: `mcpServers` were provided, but the `createMCPClient` function was not passed to the CopilotRuntime constructor. " +
           "Please provide an implementation for `createMCPClient`.",
       });
     }
@@ -323,7 +319,7 @@ export class CopilotRuntime<const T extends Parameter[] | [] = []> {
     if (
       params?.actions &&
       (params?.remoteEndpoints?.some((e) => e.type === EndpointType.LangGraphPlatform) ||
-        this.mcpEndpointsConfig?.length)
+        this.mcpServersConfig?.length)
     ) {
       console.warn(
         "Local 'actions' defined in CopilotRuntime might not be available to remote agents (LangGraph, MCP). Consider defining actions closer to the agent implementation if needed.",
@@ -1110,9 +1106,10 @@ please use an LLM adapter instead.`,
     const requestSpecificMCPActions: Action<any>[] = [];
     if (this.createMCPClientImpl) {
       // 1. Determine effective MCP endpoints for this request
-      const baseEndpoints = this.mcpEndpointsConfig || [];
-      // Assuming frontend passes config via properties.mcpEndpoints
-      const requestEndpoints = (graphqlContext.properties?.mcpEndpoints ||
+      const baseEndpoints = this.mcpServersConfig || [];
+      // Assuming frontend passes config via properties.mcpServers
+      const requestEndpoints = (graphqlContext.properties?.mcpServers ||
+        graphqlContext.properties?.mcpEndpoints ||
         []) as MCPEndpointConfig[];
 
       // Merge and deduplicate endpoints based on URL

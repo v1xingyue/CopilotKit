@@ -278,9 +278,9 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 
       // ----- Add this block: Merge mcpEndpoints into properties -----
       const finalProperties = { ...(copilotConfig.properties || {}) };
-      if (copilotConfig.mcpEndpoints && copilotConfig.mcpEndpoints.length > 0) {
-        // Prop takes precedence over any potential mcpEndpoints in properties
-        finalProperties.mcpEndpoints = copilotConfig.mcpEndpoints;
+      if (copilotConfig.mcpServers && copilotConfig.mcpServers.length > 0) {
+        // Prop takes precedence over any potential mcpServers in properties
+        finalProperties.mcpServers = copilotConfig.mcpServers;
       }
       // -------------------------------------------------------------
 

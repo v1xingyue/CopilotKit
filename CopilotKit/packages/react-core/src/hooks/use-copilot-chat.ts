@@ -42,7 +42,7 @@
  * } = useCopilotChat();
  * ```
  */
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { AgentSession, useCopilotContext } from "../context/copilot-context";
 import { Message, Role, TextMessage } from "@copilotkit/runtime-client-gql";
 import { SystemMessageFunction } from "../types";
@@ -75,6 +75,11 @@ export interface UseCopilotChatOptions {
   makeSystemMessage?: SystemMessageFunction;
 }
 
+export interface MCPServerConfig {
+  endpoint: string;
+  apiKey?: string;
+}
+
 export interface UseCopilotChatReturn {
   visibleMessages: Message[];
   appendMessage: (message: Message, options?: AppendMessageOptions) => Promise<void>;
@@ -85,6 +90,8 @@ export interface UseCopilotChatReturn {
   reset: () => void;
   isLoading: boolean;
   runChatCompletion: () => Promise<Message[]>;
+  mcpServers: MCPServerConfig[];
+  setMcpServers: (mcpServers: MCPServerConfig[]) => void;
 }
 
 export function useCopilotChat({
@@ -117,6 +124,7 @@ export function useCopilotChat({
     setLangGraphInterruptAction,
   } = useCopilotContext();
   const { messages, setMessages } = useCopilotMessagesContext();
+  const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
 
   // We need to ensure that makeSystemMessageCallback always uses the latest
   // useCopilotReadable data.
@@ -157,10 +165,21 @@ export function useCopilotChat({
     [coAgentStateRenders],
   );
 
+  // Update the copilotApiConfig with mcpServers
+  const updatedCopilotConfig = useCallback(() => {
+    return {
+      ...copilotApiConfig,
+      mcpEndpoints: mcpServers.map((server) => ({
+        endpoint: server.endpoint,
+        apiKey: server.apiKey,
+      })),
+    };
+  }, [copilotApiConfig, mcpServers]);
+
   const { append, reload, stop, runChatCompletion } = useChat({
     ...options,
     actions: Object.values(actions),
-    copilotConfig: copilotApiConfig,
+    copilotConfig: updatedCopilotConfig(),
     initialMessages: options.initialMessages || [],
     onFunctionCall: getFunctionCallHandler(),
     onCoAgentStateRender,
@@ -272,6 +291,8 @@ export function useCopilotChat({
     deleteMessage: latestDeleteFunc,
     runChatCompletion: latestRunChatCompletionFunc,
     isLoading,
+    mcpServers,
+    setMcpServers,
   };
 }
 
