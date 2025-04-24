@@ -339,8 +339,16 @@ export class CopilotRuntime<const T extends Parameter[] | [] = []> {
       return messages; // No MCP tools for this specific request
     }
 
-    // Filter only MCP actions and format instructions
-    const mcpToolInstructions = mcpActionsForRequest
+    // Create a map to deduplicate tools by name (keeping the last one if duplicates exist)
+    const uniqueMcpTools = new Map<string, Action<any>>();
+
+    // Add all MCP tools to the map with their names as keys
+    mcpActionsForRequest.forEach((action) => {
+      uniqueMcpTools.set(action.name, action);
+    });
+
+    // Format instructions from the unique tools map
+    const mcpToolInstructions = Array.from(uniqueMcpTools.values())
       .map((action) => {
         const paramsString =
           action.parameters && action.parameters.length > 0
@@ -1114,12 +1122,21 @@ please use an LLM adapter instead.`,
 
       // Merge and deduplicate endpoints based on URL
       const effectiveEndpointsMap = new Map<string, MCPEndpointConfig>();
-      [...baseEndpoints, ...requestEndpoints].forEach((ep) => {
+
+      // First add base endpoints (from runtime configuration)
+      [...baseEndpoints].forEach((ep) => {
         if (ep && ep.endpoint) {
-          // Basic validation
           effectiveEndpointsMap.set(ep.endpoint, ep);
         }
       });
+
+      // Then add request endpoints (from frontend), which will override duplicates
+      [...requestEndpoints].forEach((ep) => {
+        if (ep && ep.endpoint) {
+          effectiveEndpointsMap.set(ep.endpoint, ep);
+        }
+      });
+
       const effectiveEndpoints = Array.from(effectiveEndpointsMap.values());
 
       // 2. Fetch/Cache actions for effective endpoints
@@ -1131,14 +1148,10 @@ please use an LLM adapter instead.`,
           // Not cached, fetch now
           let client: MCPClient | null = null;
           try {
-            console.log(`MCP: Cache miss. Fetching tools for endpoint: ${endpointUrl}`);
             client = await this.createMCPClientImpl(config);
             const tools = await client.tools();
             actionsForEndpoint = convertMCPToolsToActions(tools, endpointUrl);
             this.mcpActionCache.set(endpointUrl, actionsForEndpoint); // Store in cache
-            console.log(
-              `MCP: Fetched and cached ${actionsForEndpoint.length} tools for ${endpointUrl}`,
-            );
           } catch (error) {
             console.error(
               `MCP: Failed to fetch tools from endpoint ${endpointUrl}. Skipping. Error:`,

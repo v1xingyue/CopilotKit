@@ -1,30 +1,32 @@
-import { NextRequest } from "next/server";
 import {
   CopilotRuntime,
+  OpenAIAdapter,
   copilotRuntimeNextJSAppRouterEndpoint,
-  ExperimentalEmptyAdapter,
-  // langGraphPlatformEndpoint
 } from "@copilotkit/runtime";
+import { experimental_createMCPClient } from "ai";
 
-const serviceAdapter = new ExperimentalEmptyAdapter();
+import { NextRequest } from "next/server";
 
+const serviceAdapter = new OpenAIAdapter();
 const runtime = new CopilotRuntime({
-  remoteEndpoints: [
-    // Uncomment this if you want to use LangGraph JS, make sure to
-    // remove the remote action url below too.
-    //
-    // langGraphPlatformEndpoint({
-    //   deploymentUrl: "http://localhost:8123",
-    //   langsmithApiKey: process.env.LANGSMITH_API_KEY || "", // only used in LangGraph Platform deployments
-    //   agents: [{
-    //       name: 'sample_agent',
-    //       description: 'A helpful LLM agent.'
-    //   }]
-    // }),
+  mcpServers: [
     {
-      url: process.env.REMOTE_ACTION_URL || "http://localhost:8000/copilotkit",
+      endpoint:
+        "https://mcp.composio.dev/hackernews/rapping-fluffy-lighter-fCaF5V",
     },
   ],
+  // @ts-ignore
+  createMCPClient: async (config) => {
+    return await experimental_createMCPClient({
+      transport: {
+        type: "sse",
+        url: config.endpoint,
+        headers: config.apiKey
+          ? { Authorization: `Bearer ${config.apiKey}` }
+          : undefined,
+      },
+    });
+  },
 });
 
 export const POST = async (req: NextRequest) => {
