@@ -124,29 +124,33 @@ export function useCopilotChat({
     setLangGraphInterruptAction,
   } = useCopilotContext();
   const { messages, setMessages } = useCopilotMessagesContext();
-  const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([]);
 
-  // We need to ensure that makeSystemMessageCallback always uses the latest
-  // useCopilotReadable data.
-  const latestGetContextString = useUpdatedRef(getContextString);
-  const deleteMessage = useCallback(
-    (messageId: string) => {
-      setMessages((prev) => prev.filter((message) => message.id !== messageId));
-    },
-    [setMessages],
-  );
+  // Simple state for MCP servers (keep for interface compatibility)
+  const [mcpServers, setLocalMcpServers] = useState<MCPServerConfig[]>([]);
 
-  const makeSystemMessageCallback = useCallback(() => {
-    const systemMessageMaker = makeSystemMessage || defaultSystemMessage;
-    // this always gets the latest context string
-    const contextString = latestGetContextString.current([], defaultCopilotContextCategories); // TODO: make the context categories configurable
+  // This effect directly updates the context when mcpServers state changes
+  useEffect(() => {
+    if (mcpServers.length > 0) {
+      // Copy to avoid issues
+      const serversCopy = [...mcpServers];
 
-    return new TextMessage({
-      content: systemMessageMaker(contextString, chatInstructions),
-      role: Role.System,
-    });
-  }, [getContextString, makeSystemMessage, chatInstructions]);
+      // Update in all locations
+      copilotApiConfig.mcpServers = serversCopy;
 
+      // Also ensure it's in properties
+      if (!copilotApiConfig.properties) {
+        copilotApiConfig.properties = {};
+      }
+      copilotApiConfig.properties.mcpServers = serversCopy;
+    }
+  }, [mcpServers, copilotApiConfig]);
+
+  // Provide the same interface
+  const setMcpServers = useCallback((servers: MCPServerConfig[]) => {
+    setLocalMcpServers(servers);
+  }, []);
+
+  // Move these function declarations above the useChat call
   const onCoAgentStateRender = useAsyncCallback(
     async (args: CoAgentStateRenderHandlerArguments) => {
       const { name, nodeName, state } = args;
@@ -165,21 +169,29 @@ export function useCopilotChat({
     [coAgentStateRenders],
   );
 
-  // Update the copilotApiConfig with mcpServers
-  const updatedCopilotConfig = useCallback(() => {
-    return {
-      ...copilotApiConfig,
-      mcpEndpoints: mcpServers.map((server) => ({
-        endpoint: server.endpoint,
-        apiKey: server.apiKey,
-      })),
-    };
-  }, [copilotApiConfig, mcpServers]);
+  const makeSystemMessageCallback = useCallback(() => {
+    const systemMessageMaker = makeSystemMessage || defaultSystemMessage;
+    // this always gets the latest context string
+    const contextString = getContextString([], defaultCopilotContextCategories); // TODO: make the context categories configurable
 
+    return new TextMessage({
+      content: systemMessageMaker(contextString, chatInstructions),
+      role: Role.System,
+    });
+  }, [getContextString, makeSystemMessage, chatInstructions]);
+
+  const deleteMessage = useCallback(
+    (messageId: string) => {
+      setMessages((prev) => prev.filter((message) => message.id !== messageId));
+    },
+    [setMessages],
+  );
+
+  // Get chat helpers with updated config
   const { append, reload, stop, runChatCompletion } = useChat({
     ...options,
     actions: Object.values(actions),
-    copilotConfig: updatedCopilotConfig(),
+    copilotConfig: copilotApiConfig,
     initialMessages: options.initialMessages || [],
     onFunctionCall: getFunctionCallHandler(),
     onCoAgentStateRender,
@@ -205,14 +217,6 @@ export function useCopilotChat({
     setLangGraphInterruptAction,
   });
 
-  // this is a workaround born out of a bug that Athena incessantly ran into.
-  // We could not find the origin of the bug, however, it was clear that an outdated version of the append function was being used somehow --
-  // it referenced the old state of the messages array, and not the latest one.
-  //
-  // We want to make copilotkit as abuse-proof as possible, so we are adding this workaround to ensure that the latest version of the append function is always used.
-  //
-  // How does this work?
-  // we store the relevant function in a ref that is always up-to-date, and then we use that ref in the callback.
   const latestAppend = useUpdatedRef(append);
   const latestAppendFunc = useAsyncCallback(
     async (message: Message, options?: AppendMessageOptions) => {
